@@ -5,14 +5,16 @@ built with Expo + Supabase.
 
 ## What's built
 
-- **Auth** — email/password signup & login (Supabase Auth), role-based routing
+- **Auth** — email/password signup & login (Supabase Auth), role-based
+  routing, account deletion (Apple guideline 5.1.1(v))
 - **Member app** — home (membership status, latest BMI, announcements), class
-  browsing & booking with waitlist, BMI progress history, diet/workout plan
-  viewer, workout self-logging, profile
-- **Admin app** — dashboard (membership stats), member directory & detail
-  (edit subscription dates, log BMI machine readings, assign diet/workout
-  plans), class scheduling (Yoga/Boxing/Plank/Stretching/Zumba/Hyrox + custom
-  types), announcements
+  browsing & booking with waitlist, trainer session requests, BMI progress
+  history, diet/workout plan viewer, workout self-logging, profile
+- **Admin app** — dashboard (membership stats, pending trainer requests),
+  member directory & detail (edit subscription dates, log BMI machine
+  readings, assign diet/workout plans, assign trainer sessions), class
+  scheduling (Yoga/Boxing/Plank/Stretching/Zumba/Hyrox + custom types),
+  announcements, profile
 
 Payments are handled outside the app, so there's no billing integration.
 Check-in (QR/geofence) is scoped out of v1 — see "What's not built" below.
@@ -41,12 +43,27 @@ npx supabase link --project-ref <your-project-ref>
 npx supabase db push
 ```
 
-This runs both files in `supabase/migrations/` in order:
+This runs every file in `supabase/migrations/` in order:
 
 - `0001_initial_schema.sql` — tables, the `profiles` auto-create trigger,
   membership status logic, and the class seat-count view
 - `0002_rls_policies.sql` — Row-Level Security policies (members only ever
   see their own data; admins see and manage everything)
+- `0003_grants.sql` — table-level `GRANT`s to `authenticated`. RLS alone
+  isn't enough for Postgres to allow a query; this is what Supabase's
+  dashboard normally does for you automatically, which the CLI doesn't
+- `0004_membership_refresh_schedule.sql` — schedules
+  `refresh_membership_statuses()` daily via `pg_cron`, plus an admin-gated
+  RPC for the dashboard's manual refresh button
+- `0005_delete_account.sql` — self-service account deletion
+- `0006_lock_down_function_execute.sql` — revokes the default `PUBLIC`
+  execute grant Postgres adds to every function, restricting each to what
+  actually needs to call it
+
+If you're running `npx supabase login` somewhere without a browser (CI, a
+non-interactive shell), generate a personal access token at
+[app.supabase.com/account/tokens](https://app.supabase.com/account/tokens)
+and set it as `SUPABASE_ACCESS_TOKEN` instead.
 
 ### 3. Configure the app
 
@@ -98,8 +115,6 @@ button on the Dashboard tab, which calls the admin-gated
 - **Push notifications** — announcements currently only show in-app; wiring
   up Expo push notifications for new announcements/class reminders is a
   natural next step.
-- **Delete Account flow** — required by Apple App Store guideline 5.1.1(v)
-  before you can submit to the App Store. Worth building before launch.
 
 ## Project structure
 
@@ -107,12 +122,12 @@ button on the Dashboard tab, which calls the admin-gated
 app/
   _layout.tsx          # root layout: auth state -> redirects to (auth)/(member)/(admin)
   (auth)/               login, signup
-  (member)/              home, classes, bmi, plans, profile (tab bar)
-  (admin)/               dashboard, members (list + detail), classes, announcements (tab bar)
+  (member)/              home, classes, trainer, bmi, plans, profile (tab bar)
+  (admin)/               dashboard, members (list + detail), classes, announcements, profile (tab bar)
 components/ui.tsx       # shared design system (Screen, Card, Button, Input, Badge...)
 constants/theme.ts       # colors, spacing, font sizes
 contexts/AuthContext.tsx # Supabase session + profile/role state
 lib/supabase.ts          # Supabase client (SecureStore-backed session persistence)
 types/database.ts        # TypeScript types mirroring the schema
-supabase/migrations/     # SQL migrations (schema + RLS policies)
+supabase/migrations/     # SQL migrations (schema, RLS, grants, cron, account deletion)
 ```
