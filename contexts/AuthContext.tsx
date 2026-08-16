@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { registerForPushNotifications, unregisterCurrentDevicePush } from '@/lib/pushNotifications';
 import type { Profile } from '@/types/database';
 
 interface AuthContextValue {
@@ -48,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(data.session);
       if (data.session?.user) {
         await loadProfile(data.session.user.id);
+        registerForPushNotifications(data.session.user.id).catch(() => {});
       }
       setIsLoading(false);
     });
@@ -57,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(newSession);
       if (newSession?.user) {
         await loadProfile(newSession.user.id);
+        registerForPushNotifications(newSession.user.id).catch(() => {});
       } else {
         setProfile(null);
       }
@@ -94,8 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    if (session?.user) {
+      await unregisterCurrentDevicePush(session.user.id).catch(() => {});
+    }
     await supabase.auth.signOut();
-  }, []);
+  }, [session]);
 
   const deleteAccount = useCallback(async () => {
     // delete_own_account() (see migrations) cascades through every table
