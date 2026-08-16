@@ -134,6 +134,26 @@ of which is a code change:
    development` (or a production build) on a **physical device** is
    required to test this; simulators/emulators can't receive push either.
 
+## Dependency audit
+
+`npm audit` currently reports 14 high-severity findings, all one root cause:
+`image-size` (used internally by the Metro bundler to read image dimensions
+during builds) has a DoS advisory with no patched version published yet —
+confirmed by checking npm's registry directly. It's a build-tool dependency,
+not something that ships in the app or runs on a member's phone, and the
+vulnerable code path only triggers on a maliciously crafted ICNS/JXL/HEIF
+file entering the *build* pipeline, not on anything this app's own assets or
+runtime data touch. **Don't run `npm audit fix --force`** — its suggested
+fix downgrades `expo` to `53.0.27` and `react-native` to `0.72.17`, multiple
+major versions back, which would break every SDK-57-pinned package here.
+Re-run `npm audit` after future `expo`/`metro` updates to check if upstream
+has shipped a fix.
+
+A separate, already-fixed issue: `uuid@7.0.3` (pulled in via `xcode`, used
+for iOS project file generation) had a moderate buffer-bounds advisory.
+`package.json`'s `overrides` pins it to `^11.1.1` — safe since `xcode` was
+the only consumer in the tree.
+
 ## What's not built yet (intentionally scoped out of v1)
 
 - **Check-in** (QR/geofence) — you said this isn't needed for v1. When you
