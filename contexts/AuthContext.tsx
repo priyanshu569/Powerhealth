@@ -12,7 +12,7 @@ interface AuthContextValue {
     email: string,
     password: string,
     fullName: string
-  ) => Promise<{ error: string | null }>;
+  ) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -74,15 +74,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithEmail = useCallback(
     async (email: string, password: string, fullName: string) => {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return { error: error.message };
+      // full_name travels in auth metadata, not a follow-up write: the
+      // handle_new_user trigger reads it from here when creating the
+      // profiles row. A separate .update() call after signUp() would need
+      // an active session, which doesn't exist yet when email confirmation
+      // is required (the project default) — so it would silently no-op.
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName } },
+      });
+      if (error) return { error: error.message, needsEmailConfirmation: false };
 
-      // profiles row is also auto-created by a DB trigger (see migrations),
-      // this update just fills in the name the user typed on signup.
-      if (data.user) {
-        await supabase.from('profiles').update({ full_name: fullName }).eq('id', data.user.id);
-      }
-      return { error: null };
+      const needsEmailConfirmation = !data.session;
+      return { error: null, needsEmailConfirmation };
     },
     []
   );

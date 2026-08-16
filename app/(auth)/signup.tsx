@@ -12,6 +12,7 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [confirmEmailSent, setConfirmEmailSent] = useState(false);
 
   const handleSignup = async () => {
     setError(null);
@@ -24,7 +25,11 @@ export default function SignupScreen() {
       return;
     }
     setLoading(true);
-    const { error: signUpError } = await signUpWithEmail(email.trim(), password, fullName.trim());
+    const { error: signUpError, needsEmailConfirmation } = await signUpWithEmail(
+      email.trim(),
+      password,
+      fullName.trim()
+    );
     setLoading(false);
     if (signUpError) {
       setError(signUpError);
@@ -32,8 +37,26 @@ export default function SignupScreen() {
     }
     // New accounts default to the 'member' role (see handle_new_user trigger).
     // Admin roles are promoted manually in Supabase — see migrations README.
+    if (needsEmailConfirmation) {
+      setConfirmEmailSent(true);
+      return;
+    }
     router.replace('/(auth)/login');
   };
+
+  if (confirmEmailSent) {
+    return (
+      <Screen>
+        <View style={styles.content}>
+          <Text style={styles.brand}>Check your email</Text>
+          <Text style={styles.tagline}>
+            We sent a confirmation link to {email.trim()}. Tap it, then come back and log in.
+          </Text>
+          <Button label="Back to log in" onPress={() => router.replace('/(auth)/login')} />
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
