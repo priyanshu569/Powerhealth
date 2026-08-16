@@ -1,10 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet, Alert, Pressable } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Card, EmptyState, Screen, ScreenHeader } from '@/components/ui';
 import { colors, fontSizes, spacing } from '@/constants/theme';
-import type { Membership } from '@/types/database';
+import type { Membership, TrainerSession } from '@/types/database';
 
 interface Stats {
   totalMembers: number;
@@ -13,13 +13,19 @@ interface Stats {
   expired: number;
 }
 
+interface PendingTrainerSession extends TrainerSession {
+  profile: { full_name: string } | null;
+}
+
 export default function AdminDashboardScreen() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [expiringList, setExpiringList] = useState<(Membership & { profile: { full_name: string } })[]>([]);
+  const [pendingSessions, setPendingSessions] = useState<PendingTrainerSession[]>([]);
+  const [busySessionId, setBusySessionId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadStats = useCallback(async () => {
-    const [membersCountRes, activeRes, expiringRes, expiredRes] = await Promise.all([
+    const [membersCountRes, activeRes, expiringRes, expiredRes, pendingSessionsRes] = await Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'member'),
       supabase.from('memberships').select('id', { count: 'exact', head: true }).eq('status', 'active'),
       supabase
@@ -29,6 +35,12 @@ export default function AdminDashboardScreen() {
         .order('end_date', { ascending: true })
         .limit(5),
       supabase.from('memberships').select('id', { count: 'exact', head: true }).eq('status', 'expired'),
+      supabase
+        .from('trainer_sessions')
+        .select('*, profile:profiles!trainer_sessions_member_id_fkey(full_name)')
+        .eq('status', 'requested')
+        .order('session_date', { ascending: true })
+        .limit(10),
     ]);
 
     setStats({
@@ -38,7 +50,19 @@ export default function AdminDashboardScreen() {
       expired: expiredRes.count ?? 0,
     });
     setExpiringList((expiringRes.data as any) ?? []);
+    setPendingSessions((pendingSessionsRes.data as any) ?? []);
   }, []);
+
+  const updateSessionStatus = async (sessionId: string, status: 'confirmed' | 'cancelled') => {
+    setBusySessionId(sessionId);
+    const { error } = await supabase.from('trainer_sessions').update({ status }).eq('id', sessionId);
+    setBusySessionId(null);
+    if (error) {
+      Alert.alert('Could not update', error.message);
+      return;
+    }
+    await loadStats();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -85,6 +109,29 @@ export default function AdminDashboardScreen() {
           </View>
         ))}
       </Card>
+
+      <Card>
+        <Text style={styles.cardTitle}>Pending trainer requests</Text>
+        {pendingSessions.length === 0 && <EmptyState message="No pending requests." />}
+        {pendingSessions.map((s) => (
+          <View key={s.id} style={styles.sessionRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.memberName}>{s.profile?.full_name ?? 'Member'}</Text>
+              <Text style={styles.muted}>
+                {new Date(s.session_date).toLocaleDateString()} · {s.start_time.slice(0, 5)} · {s.trainer_name}
+              </Text>
+            </View>
+            <View style={styles.sessionActions}>
+              <Pressable disabled={busySessionId === s.id} onPress={() => updateSessionStatus(s.id, 'confirmed')}>
+                <Text style={styles.actionLink}>Confirm</Text>
+              </Pressable>
+              <Pressable disabled={busySessionId === s.id} onPress={() => updateSessionStatus(s.id, 'cancelled')}>
+                <Text style={[styles.actionLink, { color: colors.danger }]}>Decline</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+      </Card>
     </Screen>
   );
 }
@@ -104,4 +151,15 @@ const styles = StyleSheet.create({
   },
   memberName: { color: colors.text, fontSize: fontSizes.sm, fontWeight: '600' },
   muted: { color: colors.textMuted, fontSize: fontSizes.sm },
+  sessionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.sm,
+  },
+  sessionActions: { flexDirection: 'row', gap: spacing.md },
+  actionLink: { color: colors.primary, fontSize: fontSizes.xs, fontWeight: '700' },
 });

@@ -27,6 +27,13 @@ export default function MemberTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="trainer"
+        options={{
+          title: 'Trainer',
+          tabBarIcon: ({ color, size }) => <Ionicons name="barbell" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="bmi"
         options={{
           title: 'BMI',
