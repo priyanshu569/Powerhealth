@@ -7,6 +7,9 @@ built with Expo + Supabase.
 
 - **Auth** — email/password signup & login (Supabase Auth), role-based
   routing, account deletion (Apple guideline 5.1.1(v))
+- **Push notifications** — new announcements and 30-minute class reminders,
+  sent via `pg_net` (see "Push notifications" below for the EAS setup this
+  needs before it actually delivers anything)
 - **Member app** — home (membership status, latest BMI, announcements), class
   browsing & booking with waitlist, trainer session requests, BMI progress
   history, diet/workout plan viewer, workout self-logging, profile
@@ -59,6 +62,10 @@ This runs every file in `supabase/migrations/` in order:
 - `0006_lock_down_function_execute.sql` — revokes the default `PUBLIC`
   execute grant Postgres adds to every function, restricting each to what
   actually needs to call it
+- `0007_push_notifications.sql` — `push_tokens` table, a trigger that pushes
+  every member on new announcements, and a `pg_cron` job that pushes members
+  with a booked class starting in 20-30 minutes — see "Push notifications"
+  below before this does anything
 
 If you're running `npx supabase login` somewhere without a browser (CI, a
 non-interactive shell), generate a personal access token at
@@ -105,6 +112,28 @@ Admins can also trigger it on demand from the **Refresh membership statuses**
 button on the Dashboard tab, which calls the admin-gated
 `admin_refresh_membership_statuses()` RPC.
 
+## Push notifications
+
+Sent directly from Postgres via `pg_net` (see `0007_push_notifications.sql`)
+— no Edge Function needed. A trigger pushes every member when an admin
+posts a new announcement; a `pg_cron` job checks every 10 minutes for
+classes starting in 20-30 minutes and pushes members with a `booked` (not
+waitlisted) status for that class.
+
+The client side (`lib/pushNotifications.ts`, wired into `AuthContext`)
+registers a device's push token on sign-in and removes it on sign-out. For
+this to actually deliver anything, two things need to happen first, neither
+of which is a code change:
+
+1. **Link an EAS project**: `npx eas init` (needs an Expo account) — this
+   writes `extra.eas.projectId` into `app.json`. Without it, registration
+   silently no-ops (check the console for a `[push] no EAS project ID`
+   warning).
+2. **Build a development build**: since Expo SDK 53, Expo Go no longer
+   supports remote push notifications at all — `npx eas build --profile
+   development` (or a production build) on a **physical device** is
+   required to test this; simulators/emulators can't receive push either.
+
 ## What's not built yet (intentionally scoped out of v1)
 
 - **Check-in** (QR/geofence) — you said this isn't needed for v1. When you
@@ -112,9 +141,6 @@ button on the Dashboard tab, which calls the admin-gated
   front-desk marking since there's no staff overnight.
 - **In-app payments** — handled offline per your instruction. Adding
   Razorpay/Stripe later wouldn't require reworking the schema.
-- **Push notifications** — announcements currently only show in-app; wiring
-  up Expo push notifications for new announcements/class reminders is a
-  natural next step.
 
 ## Project structure
 
@@ -128,6 +154,7 @@ components/ui.tsx       # shared design system (Screen, Card, Button, Input, Bad
 constants/theme.ts       # colors, spacing, font sizes
 contexts/AuthContext.tsx # Supabase session + profile/role state
 lib/supabase.ts          # Supabase client (SecureStore-backed session persistence)
+lib/pushNotifications.ts # Expo push token registration
 types/database.ts        # TypeScript types mirroring the schema
-supabase/migrations/     # SQL migrations (schema, RLS, grants, cron, account deletion)
+supabase/migrations/     # SQL migrations (schema, RLS, grants, cron, account deletion, push)
 ```
