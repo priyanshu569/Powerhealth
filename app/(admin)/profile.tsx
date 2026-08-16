@@ -4,14 +4,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button, Card, Screen, ScreenHeader } from '@/components/ui';
 import { colors, fontSizes, spacing } from '@/constants/theme';
 
-export default function MemberProfileScreen() {
+export default function AdminProfileScreen() {
   const { profile, session, signOut, deleteAccount } = useAuth();
   const [deleting, setDeleting] = useState(false);
 
   const confirmDeleteAccount = () => {
     Alert.alert(
       'Delete account',
-      'This permanently deletes your account and all your data — membership history, class bookings, BMI records, workout logs, everything. This cannot be undone.',
+      'This permanently deletes your admin account and all your data. This cannot be undone. Member data, classes, and announcements you manage are not affected.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete account', style: 'destructive', onPress: handleDeleteAccount },
@@ -42,10 +42,6 @@ export default function MemberProfileScreen() {
         <View style={styles.row}>
           <Text style={styles.label}>Email</Text>
           <Text style={styles.value}>{session?.user.email ?? '—'}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Phone</Text>
-          <Text style={styles.value}>{profile?.phone ?? '—'}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Role</Text>

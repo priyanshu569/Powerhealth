@@ -15,6 +15,7 @@ interface AuthContextValue {
   ) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  deleteAccount: () => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -96,6 +97,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
+  const deleteAccount = useCallback(async () => {
+    // delete_own_account() (see migrations) cascades through every table
+    // that references this user, so this alone removes all their data.
+    // The account is gone after this, so sign out to clear the now-stale
+    // local session rather than leaving the client holding dead tokens.
+    const { error } = await supabase.rpc('delete_own_account');
+    if (error) return { error: error.message };
+    await supabase.auth.signOut();
+    return { error: null };
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     if (session?.user) {
       await loadProfile(session.user.id);
@@ -104,7 +116,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, profile, isLoading, signInWithEmail, signUpWithEmail, signOut, refreshProfile }}
+      value={{
+        session,
+        profile,
+        isLoading,
+        signInWithEmail,
+        signUpWithEmail,
+        signOut,
+        refreshProfile,
+        deleteAccount,
+      }}
     >
       {children}
     </AuthContext.Provider>
