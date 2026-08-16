@@ -79,19 +79,14 @@ You can find the UUID in **Authentication → Users** in the dashboard.
 ## Keeping membership statuses fresh
 
 A membership's `status` (`active` / `expiring_soon` / `expired`) is computed
-from its dates automatically whenever the row is inserted or updated. But a
-membership nobody touches should still flip to `expired` as its end date
-passes — for that, call:
+from its dates automatically whenever the row is inserted or updated. A
+membership nobody touches still needs to flip to `expired` as its end date
+passes — `0004_membership_refresh_schedule.sql` handles this with a daily
+`pg_cron` job (00:15 IST) that calls `refresh_membership_statuses()`.
 
-```sql
-select refresh_membership_statuses();
-```
-
-Options for running this automatically:
-- **pg_cron** (if enabled on your Supabase project): schedule it daily
-- Or trigger it from a Supabase Edge Function on a cron schedule
-- Or just call it manually / from the admin dashboard for now — it's cheap
-  and idempotent
+Admins can also trigger it on demand from the **Refresh membership statuses**
+button on the Dashboard tab, which calls the admin-gated
+`admin_refresh_membership_statuses()` RPC.
 
 ## What's not built yet (intentionally scoped out of v1)
 
