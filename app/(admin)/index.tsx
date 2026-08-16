@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Text, View, StyleSheet, Alert, Pressable } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { Card, EmptyState, Screen, ScreenHeader } from '@/components/ui';
+import { Button, Card, EmptyState, Screen, ScreenHeader } from '@/components/ui';
 import { colors, fontSizes, spacing } from '@/constants/theme';
 import type { Membership, TrainerSession } from '@/types/database';
 
@@ -23,6 +23,7 @@ export default function AdminDashboardScreen() {
   const [pendingSessions, setPendingSessions] = useState<PendingTrainerSession[]>([]);
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshingStatuses, setRefreshingStatuses] = useState(false);
 
   const loadStats = useCallback(async () => {
     const [membersCountRes, activeRes, expiringRes, expiredRes, pendingSessionsRes] = await Promise.all([
@@ -76,11 +77,31 @@ export default function AdminDashboardScreen() {
     setRefreshing(false);
   };
 
+  const handleRefreshStatuses = async () => {
+    setRefreshingStatuses(true);
+    // Statuses also refresh automatically via a daily pg_cron job (see
+    // supabase/migrations) — this just lets an admin force it on demand.
+    const { error } = await supabase.rpc('admin_refresh_membership_statuses');
+    setRefreshingStatuses(false);
+    if (error) {
+      Alert.alert('Could not refresh', error.message);
+      return;
+    }
+    await loadStats();
+  };
+
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <ScreenHeader title="Dashboard" subtitle="PowerHealth at a glance" />
 
-      <View style={styles.statsGrid}>
+      <Button
+        label="Refresh membership statuses"
+        variant="secondary"
+        loading={refreshingStatuses}
+        onPress={handleRefreshStatuses}
+      />
+
+      <View style={[styles.statsGrid, { marginTop: spacing.md }]}>
         <Card style={styles.statCard}>
           <Text style={styles.statValue}>{stats?.totalMembers ?? '—'}</Text>
           <Text style={styles.statLabel}>Members</Text>
